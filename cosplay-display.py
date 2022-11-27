@@ -33,16 +33,39 @@ DEFAULT_SERVING_PORT = 8000
 DEFAULT_STARTING_DIRECTORY = "cosplayers"
 
 # HTML
-INDEX_PAGE = f"""
+INDEX_PAGE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="{DEFAULT_REFRESH_SECONDS}">
+<script>
+function scaleToFit(img) {
+var canvas = document.getElementById("mainCanvas");
+var context = canvas.getContext("2d");
+var hRatio = canvas.width  / img.width;
+var vRatio =  canvas.height / img.height;
+var ratio  = Math.min(hRatio, vRatio);
+var centerShift_x = (canvas.width - img.width*ratio) / 2;
+var centerShift_y = (canvas.height - img.height*ratio) / 2;
+context.imageSmoothingEnabled = true;
+context.imageSmoothingQuality = "high";
+context.clearRect(0, 0, canvas.width, canvas.height);
+context.drawImage(img, 0, 0, img.width, img.height, centerShift_x, centerShift_y, img.width*ratio, img.height*ratio);
+}
+function loadImage() {
+var img = new Image();
+img.src = "/img";
+img.onload = function() { scaleToFit(this); }
+}
+function startUp() {
+setInterval(loadImage, 30000);
+loadImage();
+}
+</script>
 <title>COSPLAY DISPLAY</title>
 </head>
-<body style="margin: 0px; padding: 0px;">
-<img src="/img" styld="left:0px; top:0px; margin: 0px; padding: 0px;">
+<body style="margin: 0px; padding: 0px;" onload="startUp()">
+<canvas style="margin: 0px; padding: 0px; width: 100%; height: 100%; position: absolute; top: 0px; left: 0px;" id="mainCanvas"></canvas>
 </body>
 </html>
 """.replace("\n", "")
