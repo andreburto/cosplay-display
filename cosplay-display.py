@@ -5,12 +5,14 @@ import http.server as hs
 import os
 import logging
 import sys
+from urllib import parse
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from PIL import Image
 from random import randint
 
 logger = logging.getLogger(__file__)
@@ -39,33 +41,34 @@ INDEX_PAGE = """
 <head>
 <meta charset="UTF-8">
 <script>
-function scaleToFit(img) {
+function drawOnCanvas(img) {
 var canvas = document.getElementById("mainCanvas");
 var context = canvas.getContext("2d");
-var hRatio = canvas.width  / img.width;
-var vRatio =  canvas.height / img.height;
-var ratio  = Math.min(hRatio, vRatio);
-var centerShift_x = (canvas.width - img.width*ratio) / 2;
-var centerShift_y = (canvas.height - img.height*ratio) / 2;
-context.imageSmoothingEnabled = true;
-context.imageSmoothingQuality = "high";
+var centerShift_x = Math.floor((canvas.width - img.width) / 2);
+var centerShift_y = Math.floor((canvas.height - img.height) / 2);
 context.clearRect(0, 0, canvas.width, canvas.height);
-context.drawImage(img, 0, 0, img.width, img.height, centerShift_x, centerShift_y, img.width*ratio, img.height*ratio);
+context.drawImage(img, centerShift_x, centerShift_y);
 }
 function loadImage() {
 var img = new Image();
-img.src = "/img";
-img.onload = function() { scaleToFit(this); }
+resizeCanvas();
+img.src = "/img?width=" + window.innerWidth + "&height=" + window.innerHeight;
+img.onload = function() { drawOnCanvas(this); }
 }
 function startUp() {
 setInterval(loadImage, 30000);
 loadImage();
 }
+function resizeCanvas() {
+var canvas = document.getElementById("mainCanvas");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+}
 </script>
 <title>COSPLAY DISPLAY</title>
 </head>
-<body style="margin: 0px; padding: 0px;" onload="startUp()">
-<canvas style="margin: 0px; padding: 0px; width: 100%; height: 100%; position: absolute; top: 0px; left: 0px;" id="mainCanvas"></canvas>
+<body style="margin:0px;padding:0px;" onload="startUp()">
+<canvas style="position:absolute;top:0px;left:0px;" id="mainCanvas"></canvas>
 </body>
 </html>
 """.replace("\n", "")
@@ -157,7 +160,7 @@ def download_image(image_json, service):
         if done:
             break
 
-    return random_cosplay_file.get("mimeType"), file.getvalue()
+    return random_cosplay_file.get("mimeType"), file
 
 
 # Web server components.
@@ -165,9 +168,35 @@ class WebHandler(hs.BaseHTTPRequestHandler):
     image_list = None
     service = None
 
-    def _get_image(self):
-        return download_image(self.image_list, self.service)
+    def _get_querysting(self):
+        """
+        Returns a dictionary of the query string parameters.
+        """
+        return dict(parse.parse_qsl(parse.urlsplit(self.path).query))
 
+    def _resize_image(self, data):
+        """
+        Resizes the image to fit within the canvas maintaining aspect ratio.
+        """
+        query_string = self._get_querysting()
+        image = Image.open(data)
+        image_width, image_height = image.size
+        canvas_width = int(query_string.get("width"))
+        canvas_height = int(query_string.get("height"))
+        if (image_width * image_height) > (canvas_width * canvas_height):
+            if canvas_width > canvas_height:
+                image = image.resize((int(image_width * (canvas_height / image_height)), canvas_height), Image.ANTIALIAS)
+            else:
+                image = image.resize((canvas_width, int(image_height * (canvas_width / image_width))), Image.ANTIALIAS)
+        return image
+
+
+    def _get_image(self):
+        mime_type, data = download_image(self.image_list, self.service)
+        resized_image = self._resize_image(data)
+        image_bytes = io.BytesIO()
+        resized_image.save(image_bytes, mime_type.split("/")[1].upper())
+        return mime_type, image_bytes.getvalue()
     def _get_index(self):
         return "text/html", INDEX_PAGE.encode()
 
@@ -175,6 +204,7 @@ class WebHandler(hs.BaseHTTPRequestHandler):
         mime_type, data = self._get_image() if self.path.startswith("/img") else self._get_index()
         self.send_response(200)
         self.send_header("Content-type", mime_type)
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 
