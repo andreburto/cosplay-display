@@ -5,6 +5,7 @@ import http.server as hs
 import os
 import logging
 import sys
+from time import sleep
 from urllib import parse
 
 from googleapiclient.discovery import build
@@ -12,7 +13,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from PIL import Image
+from PIL import Image, ImageOps
 from random import randint
 
 logger = logging.getLogger(__file__)
@@ -100,17 +101,23 @@ def create_service(token_json, credentials):
     # created automatically when the authorization flow completes for the first
     # time.
     if os.path.exists(token_json):
-        creds = Credentials.from_authorized_user_file(token_json, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(token_json, SCOPES)
+        except:
+            os.remove(token_json)
+
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(credentials, SCOPES)
-            creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(bind_addr="0.0.0.0", port=8080, open_browser=False)
+
         # Save the credentials for the next run
         with open(token_json, 'w') as token:
             token.write(creds.to_json())
+
     service = build('drive', 'v3', credentials=creds)
     return service
 
@@ -179,15 +186,20 @@ class WebHandler(hs.BaseHTTPRequestHandler):
         Resizes the image to fit within the canvas maintaining aspect ratio.
         """
         query_string = self._get_querysting()
-        image = Image.open(data)
+        original_image = Image.open(data)
+        image = ImageOps.exif_transpose(original_image)
         image_width, image_height = image.size
         canvas_width = int(query_string.get("width"))
         canvas_height = int(query_string.get("height"))
         if (image_width * image_height) > (canvas_width * canvas_height):
             if canvas_width > canvas_height:
-                image = image.resize((int(image_width * (canvas_height / image_height)), canvas_height), Image.ANTIALIAS)
+                image = image.resize(
+                    (int(image_width * (canvas_height / image_height)), canvas_height),
+                    Image.Resampling.LANCZOS)
             else:
-                image = image.resize((canvas_width, int(image_height * (canvas_width / image_width))), Image.ANTIALIAS)
+                image = image.resize(
+                    (canvas_width, int(image_height * (canvas_width / image_width))),
+                    Image.Resampling.LANCZOS)
         return image
 
 
@@ -249,7 +261,11 @@ def main():
     elif args.serve_site:
         serve_site(args, service)
     else:
-        raise ValueError("You must use --make-list or --serve-site when running the script.")
+        if not os.path.exists(args.image_list):
+            print("Downloading image list...")
+            make_list(args, service)
+        print("Serving site...")
+        serve_site(args, service)
 
 
 if __name__ == '__main__':
