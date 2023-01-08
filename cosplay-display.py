@@ -5,8 +5,6 @@ import http.server as hs
 import os
 import logging
 import sys
-from time import sleep
-from urllib import parse
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -15,6 +13,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from PIL import Image, ImageOps
 from random import randint
+from urllib import parse
 
 logger = logging.getLogger(__file__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -112,7 +111,7 @@ def create_service(token_json, credentials):
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(credentials, SCOPES)
-            creds = flow.run_local_server(bind_addr="0.0.0.0", port=8080, open_browser=False)
+            creds = flow.run_local_server(bind_addr="0.0.0.0", port=DEFAULT_SERVING_PORT, open_browser=False)
 
         # Save the credentials for the next run
         with open(token_json, 'w') as token:
@@ -243,7 +242,7 @@ def make_list(args, service):
 
 def serve_site(args, service):
     """
-    Serve the web site that displays random images.
+    Serve the website that displays random images.
     """
     WebHandler.image_list = args.image_list
     WebHandler.service = service
@@ -261,9 +260,8 @@ def main():
     elif args.serve_site:
         serve_site(args, service)
     else:
-        if not os.path.exists(args.image_list):
-            print("Downloading image list...")
-            make_list(args, service)
+        print("Downloading image list...")
+        make_list(args, service)
         print("Serving site...")
         serve_site(args, service)
 
