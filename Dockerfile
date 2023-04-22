@@ -8,4 +8,4 @@ RUN python3 -m pip install -r /tmp/requirements.txt && \
 
 WORKDIR /app
 
-CMD ["python3", "cosplay-display.py"]
+ENTRYPOINT ["python3", "cosplay-display.py"]

@@ -20,6 +20,8 @@ It can be run from the host, but the documentation will focus on Docker for cros
 
 ## Changes
 
+*2023-04-22:* Using two containers to avoid Python not freeing up the port during the same run, and Google Auth not liking a separate port
+
 *2023-01-08:* Update script to use one port, for authentication and serving. Create README file.
 
 *2022-12-25:* Create Docker file with plans to run on Windows.

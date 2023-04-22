@@ -98,24 +98,17 @@ def create_service(token_json, credentials):
     creds = None
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists(token_json):
-        try:
-            creds = Credentials.from_authorized_user_file(token_json, SCOPES)
-        except:
-            os.remove(token_json)
+    # time. If there are no (valid) credentials available, let the user log in.
+    try:
+        creds = Credentials.from_authorized_user_file(token_json, SCOPES)
+        creds.refresh(Request())
+    except:  # noqa
+        flow = InstalledAppFlow.from_client_secrets_file(credentials, SCOPES)
+        creds = flow.run_local_server(bind_addr="0.0.0.0", port=DEFAULT_SERVING_PORT, open_browser=False)
 
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentials, SCOPES)
-            creds = flow.run_local_server(bind_addr="0.0.0.0", port=DEFAULT_SERVING_PORT, open_browser=False)
-
-        # Save the credentials for the next run
-        with open(token_json, 'w') as token:
-            token.write(creds.to_json())
+    # Save the credentials for the next run
+    with open(token_json, 'w') as token:
+        token.write(creds.to_json())
 
     service = build('drive', 'v3', credentials=creds)
     return service
@@ -227,6 +220,11 @@ class WebServer(hs.HTTPServer):
 
 # Script actions.
 def make_list(args, service):
+    """
+    Builds the list of images from the Google Drive folder.
+    """
+    print("Downloading image list...")
+
     # get the root folder
     cosplayers_folder = get_files_by_query(service, [f"name = '{DEFAULT_STARTING_DIRECTORY}'"])
     cosplayers_folder_id = cosplayers_folder[0].get("id")
@@ -244,6 +242,8 @@ def serve_site(args, service):
     """
     Serve the website that displays random images.
     """
+    print("Serving site...")
+
     WebHandler.image_list = args.image_list
     WebHandler.service = service
 
@@ -260,9 +260,7 @@ def main():
     elif args.serve_site:
         serve_site(args, service)
     else:
-        print("Downloading image list...")
         make_list(args, service)
-        print("Serving site...")
         serve_site(args, service)
 
 
